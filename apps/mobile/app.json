@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "barber-booking-mobile",
+    "slug": "barber-booking-mobile",
+    "scheme": "barberbooking",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": false,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.barberbooking.mobile"
+    },
+    "android": {
+      "package": "com.barberbooking.mobile"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
+    "plugins": ["expo-router"]
+  }
+}
