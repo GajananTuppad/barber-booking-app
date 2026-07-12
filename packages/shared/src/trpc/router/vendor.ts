@@ -1,0 +1,197 @@
+import { TRPCError } from '@trpc/server';
+import { z } from 'zod';
+import { generateSlotsFromSchedule } from '../../lib/schedule';
+import type { BarberUpdate, ServiceRow } from '../../types/database';
+import { barberProcedure, router } from '../trpc';
+
+const DAYS_AHEAD = 30;
+
+const serviceInputSchema = z.object({
+  id: z.string().uuid().optional(),
+  name: z.string().min(1),
+  description: z.string().max(2000).optional(),
+  durationMinutes: z.number().int().positive(),
+  price: z.number().nonnegative(),
+});
+
+const weeklyScheduleEntrySchema = z.object({
+  dayOfWeek: z.number().int().min(0).max(6),
+  startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Expected HH:mm'),
+  endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Expected HH:mm'),
+  intervalMinutes: z.number().int().positive().max(240),
+});
+
+const earningsPeriodSchema = z.enum(['today', 'week', 'month', 'all']);
+
+function periodStart(period: Exclude<z.infer<typeof earningsPeriodSchema>, 'all'>): Date {
+  const now = new Date();
+  if (period === 'today') {
+    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  }
+  const days = period === 'week' ? 7 : 30;
+  return new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+}
+
+export const vendorRouter = router({
+  updateProfile: barberProcedure
+    .input(
+      z.object({
+        bio: z.string().max(2000).optional(),
+        avatarUrl: z.string().url().optional(),
+        isAvailable: z.boolean().optional(),
+        services: z.array(serviceInputSchema).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const barberUpdate: BarberUpdate = {};
+      if (input.bio !== undefined) barberUpdate.bio = input.bio;
+      if (input.avatarUrl !== undefined) barberUpdate.avatar_url = input.avatarUrl;
+      if (input.isAvailable !== undefined) barberUpdate.is_available = input.isAvailable;
+
+      let barber = ctx.barber;
+      if (Object.keys(barberUpdate).length > 0) {
+        const { data, error } = await ctx.supabase
+          .from('barbers')
+          .update(barberUpdate)
+          .eq('id', ctx.barber.id)
+          .select('*')
+          .single();
+        if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+        barber = data;
+      }
+
+      let services: ServiceRow[] = [];
+      if (input.services) {
+        const toUpdate = input.services.filter(
+          (service): service is typeof service & { id: string } => Boolean(service.id),
+        );
+        const toInsert = input.services.filter((service) => !service.id);
+
+        const updated = await Promise.all(
+          toUpdate.map(async (service) => {
+            const { data, error } = await ctx.supabase
+              .from('services')
+              .update({
+                name: service.name,
+                description: service.description ?? null,
+                duration_minutes: service.durationMinutes,
+                price: service.price,
+              })
+              .eq('id', service.id)
+              .eq('barber_id', ctx.barber.id)
+              .select('*')
+              .single();
+            if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+            return data;
+          }),
+        );
+
+        let inserted: ServiceRow[] = [];
+        if (toInsert.length > 0) {
+          const { data, error } = await ctx.supabase
+            .from('services')
+            .insert(
+              toInsert.map((service) => ({
+                barber_id: ctx.barber.id,
+                name: service.name,
+                description: service.description ?? null,
+                duration_minutes: service.durationMinutes,
+                price: service.price,
+              })),
+            )
+            .select('*');
+          if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+          inserted = data ?? [];
+        }
+
+        services = [...updated, ...inserted];
+      }
+
+      return { barber, services };
+    }),
+
+  createSlots: barberProcedure
+    .input(z.object({ schedule: z.array(weeklyScheduleEntrySchema).min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const now = new Date();
+      const generated = generateSlotsFromSchedule(input.schedule, now, DAYS_AHEAD);
+      if (generated.length === 0) return { created: 0 };
+
+      const rangeEnd = new Date(now.getTime() + DAYS_AHEAD * 24 * 60 * 60 * 1000);
+      const { data: existingSlots, error: existingError } = await ctx.supabase
+        .from('slots')
+        .select('start_time')
+        .eq('barber_id', ctx.barber.id)
+        .gte('start_time', now.toISOString())
+        .lt('start_time', rangeEnd.toISOString());
+      if (existingError) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: existingError.message });
+      }
+
+      const existingStartTimes = new Set((existingSlots ?? []).map((s) => new Date(s.start_time).getTime()));
+      const toInsert = generated
+        .filter((slot) => !existingStartTimes.has(slot.startTime.getTime()))
+        .map((slot) => ({
+          barber_id: ctx.barber.id,
+          start_time: slot.startTime.toISOString(),
+          end_time: slot.endTime.toISOString(),
+          status: 'available' as const,
+        }));
+
+      if (toInsert.length === 0) return { created: 0 };
+
+      const { error: insertError } = await ctx.supabase.from('slots').insert(toInsert);
+      if (insertError) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: insertError.message });
+
+      return { created: toInsert.length };
+    }),
+
+  deleteSlot: barberProcedure
+    .input(z.object({ slotId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const { data: slot, error } = await ctx.supabase
+        .from('slots')
+        .select('*')
+        .eq('id', input.slotId)
+        .maybeSingle();
+      if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+      if (!slot) throw new TRPCError({ code: 'NOT_FOUND', message: 'Slot not found' });
+      if (slot.barber_id !== ctx.barber.id) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'You do not own this slot' });
+      }
+      if (new Date(slot.start_time) <= new Date()) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot cancel a slot that already started' });
+      }
+      if (slot.status === 'booked') {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot cancel a slot with an active booking' });
+      }
+
+      const { error: updateError } = await ctx.supabase
+        .from('slots')
+        .update({ status: 'cancelled' })
+        .eq('id', slot.id);
+      if (updateError) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: updateError.message });
+
+      return { status: 'cancelled' as const };
+    }),
+
+  getEarnings: barberProcedure
+    .input(z.object({ period: earningsPeriodSchema }))
+    .query(async ({ ctx, input }) => {
+      let query = ctx.supabase
+        .from('bookings')
+        .select('total_amount')
+        .eq('barber_id', ctx.barber.id)
+        .in('status', ['confirmed', 'completed']);
+
+      if (input.period !== 'all') {
+        query = query.gte('created_at', periodStart(input.period).toISOString());
+      }
+
+      const { data, error } = await query;
+      if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+
+      const total = (data ?? []).reduce((sum, row) => sum + Number(row.total_amount), 0);
+      return { period: input.period, bookingCount: data?.length ?? 0, total };
+    }),
+});
