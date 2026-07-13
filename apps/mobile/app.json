@@ -9,15 +9,37 @@
     "newArchEnabled": false,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.barberbooking.mobile"
+      "bundleIdentifier": "com.barberbooking.mobile",
+      "config": {
+        "googleMapsApiKey": "$GOOGLE_MAPS_IOS_API_KEY"
+      }
     },
     "android": {
-      "package": "com.barberbooking.mobile"
+      "package": "com.barberbooking.mobile",
+      "config": {
+        "googleMaps": {
+          "apiKey": "$GOOGLE_MAPS_ANDROID_API_KEY"
+        }
+      }
     },
     "web": {
       "bundler": "metro",
       "output": "static"
     },
-    "plugins": ["expo-router"]
+    "plugins": [
+      "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow $(PRODUCT_NAME) to access your photos to set a profile picture."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location to find barbers near you."
+        }
+      ]
+    ]
   }
 }

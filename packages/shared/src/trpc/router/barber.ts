@@ -23,27 +23,37 @@ export const barberRouter = router({
     if (!barbers || barbers.length === 0) return [];
 
     const salonIds = [...new Set(barbers.map((b) => b.salon_id))];
+    const profileIds = [...new Set(barbers.map((b) => b.profile_id))];
     const barberIds = barbers.map((b) => b.id);
 
-    const [{ data: salons, error: salonsError }, { data: reviews, error: reviewsError }] =
-      await Promise.all([
-        ctx.supabase.from('salons').select('*').in('id', salonIds),
-        ctx.supabase.from('reviews').select('barber_id, rating').in('barber_id', barberIds),
-      ]);
+    const [
+      { data: salons, error: salonsError },
+      { data: reviews, error: reviewsError },
+      { data: profiles, error: profilesError },
+    ] = await Promise.all([
+      ctx.supabase.from('salons').select('*').in('id', salonIds),
+      ctx.supabase.from('reviews').select('barber_id, rating').in('barber_id', barberIds),
+      ctx.supabase.from('profiles').select('*').in('id', profileIds),
+    ]);
     if (salonsError) {
       throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: salonsError.message });
     }
     if (reviewsError) {
       throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: reviewsError.message });
     }
+    if (profilesError) {
+      throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: profilesError.message });
+    }
 
     const salonsById = indexBy(salons ?? [], (s) => s.id);
+    const profilesById = indexBy(profiles ?? [], (p) => p.id);
     const reviewsByBarber = groupBy(reviews ?? [], (r) => r.barber_id);
 
     return barbers.map((barber) => {
       const barberReviews = reviewsByBarber.get(barber.id) ?? [];
       return {
         ...barber,
+        profile: profilesById.get(barber.profile_id) ?? null,
         salon: salonsById.get(barber.salon_id) ?? null,
         avgRating: averageRating(barberReviews),
         reviewCount: barberReviews.length,
@@ -67,11 +77,13 @@ export const barberRouter = router({
       }
 
       const [
+        { data: profile, error: profileError },
         { data: salon, error: salonError },
         { data: services, error: servicesError },
         { data: reviews, error: reviewsError },
         { data: upcomingSlots, error: slotsError },
       ] = await Promise.all([
+        ctx.supabase.from('profiles').select('*').eq('id', barber.profile_id).maybeSingle(),
         ctx.supabase.from('salons').select('*').eq('id', barber.salon_id).maybeSingle(),
         ctx.supabase.from('services').select('*').eq('barber_id', barber.id),
         ctx.supabase
@@ -89,6 +101,9 @@ export const barberRouter = router({
           .limit(20),
       ]);
 
+      if (profileError) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: profileError.message });
+      }
       if (salonError) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: salonError.message });
       }
@@ -102,11 +117,25 @@ export const barberRouter = router({
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: slotsError.message });
       }
 
+      const reviewerIds = [...new Set((reviews ?? []).map((review) => review.customer_id))];
+      const { data: reviewers, error: reviewersError } = await ctx.supabase
+        .from('profiles')
+        .select('*')
+        .in('id', reviewerIds);
+      if (reviewersError) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: reviewersError.message });
+      }
+      const reviewersById = indexBy(reviewers ?? [], (p) => p.id);
+
       return {
         ...barber,
+        profile: profile ?? null,
         salon: salon ?? null,
         services: services ?? [],
-        reviews: reviews ?? [],
+        reviews: (reviews ?? []).map((review) => ({
+          ...review,
+          customer: reviewersById.get(review.customer_id) ?? null,
+        })),
         avgRating: averageRating(reviews ?? []),
         reviewCount: reviews?.length ?? 0,
         upcomingSlots: upcomingSlots ?? [],
@@ -152,15 +181,26 @@ export const barberRouter = router({
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: barbersError.message });
       }
 
+      const profileIds = [...new Set((barbers ?? []).map((b) => b.profile_id))];
+      const { data: profiles, error: profilesError } = await ctx.supabase
+        .from('profiles')
+        .select('*')
+        .in('id', profileIds);
+      if (profilesError) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: profilesError.message });
+      }
+
       const distanceBySalon = new Map(nearbySalons.map(({ salon, distanceKm }) => [salon.id, distanceKm]));
       const salonById = indexBy(
         nearbySalons.map(({ salon }) => salon),
         (s) => s.id,
       );
+      const profilesById = indexBy(profiles ?? [], (p) => p.id);
 
       return (barbers ?? [])
         .map((barber) => ({
           ...barber,
+          profile: profilesById.get(barber.profile_id) ?? null,
           salon: salonById.get(barber.salon_id) ?? null,
           distanceKm: distanceBySalon.get(barber.salon_id) ?? null,
         }))
@@ -185,7 +225,6 @@ export const barberRouter = router({
         .from('slots')
         .select('*')
         .eq('barber_id', input.barberId)
-        .eq('status', 'available')
         .gte('start_time', dayStart.toISOString())
         .lt('start_time', dayEnd.toISOString())
         .order('start_time', { ascending: true });
