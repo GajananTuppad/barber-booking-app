@@ -1,8 +1,17 @@
+import NetInfo from '@react-native-community/netinfo';
+import { onlineManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { httpBatchLink } from '@trpc/client';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
 import { trpc } from '../lib/trpc';
+
+// Lets React Query pause retries/refetches while offline and resume as soon
+// as connectivity returns, instead of burning through retry attempts blind.
+onlineManager.setEventListener((setOnline) => {
+  return NetInfo.addEventListener((state) => {
+    setOnline(Boolean(state.isConnected));
+  });
+});
 
 function getApiUrl(): string {
   const url = process.env.EXPO_PUBLIC_API_URL;
@@ -13,7 +22,20 @@ function getApiUrl(): string {
 }
 
 export function TRPCProvider({ children }: { children: ReactNode }) {
-  const [queryClient] = useState(() => new QueryClient());
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            staleTime: 30_000,
+            retry: 2,
+          },
+          mutations: {
+            retry: 0,
+          },
+        },
+      }),
+  );
   const [trpcClient] = useState(() =>
     trpc.createClient({
       links: [

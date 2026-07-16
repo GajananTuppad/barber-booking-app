@@ -1,6 +1,8 @@
 import { createClient as createSupabaseJsClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
 
+export { FunctionsHttpError } from '@supabase/supabase-js';
+
 export type TypedSupabaseClient = SupabaseClient<Database>;
 
 interface AsyncStorageLike {

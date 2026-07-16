@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { useState, useTransition } from 'react';
 import { ConfirmDialog } from '../../../components/ConfirmDialog';
@@ -9,6 +10,7 @@ import { setBarberAvailability } from '../../../lib/admin-actions';
 
 interface BarberRowData {
   id: string;
+  avatar_url: string | null;
   profile: { full_name: string | null } | null;
   salon: { name: string } | null;
   totalBookings: number;
@@ -38,9 +40,19 @@ export function BarbersTable({ barbers }: { barbers: BarberRowData[] }) {
       sortValue: (r) => r.profile?.full_name ?? '',
       render: (r) => (
         <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-input text-xs text-gold">
-            {(r.profile?.full_name ?? 'B').charAt(0).toUpperCase()}
-          </div>
+          {r.avatar_url ? (
+            <Image
+              src={r.avatar_url}
+              alt=""
+              width={32}
+              height={32}
+              className="h-8 w-8 rounded-full object-cover"
+            />
+          ) : (
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-input text-xs text-gold">
+              {(r.profile?.full_name ?? 'B').charAt(0).toUpperCase()}
+            </div>
+          )}
           <span>{r.profile?.full_name ?? 'Barber'}</span>
         </div>
       ),

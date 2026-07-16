@@ -1,8 +1,8 @@
 import { TRPCError } from '@trpc/server';
-import { z } from 'zod';
 import { indexBy } from '../../lib/collections';
 import { callEdgeFunction } from '../../lib/edge-functions';
 import type { TypedSupabaseClient } from '../../lib/supabase';
+import { bookingIdInputSchema } from '../../schemas';
 import type { BookingRow } from '../../types/database';
 import { barberProcedure, protectedProcedure, router } from '../trpc';
 
@@ -92,7 +92,7 @@ export const bookingRouter = router({
   }),
 
   getById: protectedProcedure
-    .input(z.object({ bookingId: z.string().uuid() }))
+    .input(bookingIdInputSchema)
     .query(async ({ ctx, input }) => {
       const { data: booking, error } = await ctx.supabase
         .from('bookings')
@@ -121,7 +121,7 @@ export const bookingRouter = router({
     }),
 
   cancel: protectedProcedure
-    .input(z.object({ bookingId: z.string().uuid() }))
+    .input(bookingIdInputSchema)
     .mutation(async ({ ctx, input }) => {
       const { data: booking, error } = await ctx.supabase
         .from('bookings')
@@ -177,7 +177,7 @@ export const bookingRouter = router({
     }),
 
   markComplete: barberProcedure
-    .input(z.object({ bookingId: z.string().uuid() }))
+    .input(bookingIdInputSchema)
     .mutation(async ({ ctx, input }) => {
       const { data: booking, error } = await ctx.supabase
         .from('bookings')
