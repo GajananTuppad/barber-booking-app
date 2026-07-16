@@ -8,25 +8,34 @@ import { AuthProvider, useAuth } from '../providers/AuthProvider';
 import { TRPCProvider } from '../providers/TRPCProvider';
 
 function NavigationGuard() {
-  const { session, loading } = useAuth();
+  const { session, profile, loading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
   useEffect(() => {
     if (loading) return;
     const inAuthGroup = segments[0] === '(auth)';
+    const inBarberGroup = segments[0] === '(barber)';
+    const isBarber = profile?.role === 'barber';
 
     if (!session && !inAuthGroup) {
       router.replace('/(auth)/splash');
       return;
     }
 
-    // Barber-side navigation isn't built yet, so every signed-in profile
-    // lands in the customer tabs for now.
     if (session && inAuthGroup) {
+      router.replace(isBarber ? '/(barber)' : '/(customer)');
+      return;
+    }
+
+    // Keep customers and barbers in their own tab group even if they
+    // navigate to a stale deep link from the other role's group.
+    if (session && isBarber && !inBarberGroup) {
+      router.replace('/(barber)');
+    } else if (session && !isBarber && inBarberGroup) {
       router.replace('/(customer)');
     }
-  }, [session, loading, segments, router]);
+  }, [session, profile, loading, segments, router]);
 
   if (loading) {
     return (

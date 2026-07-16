@@ -81,19 +81,14 @@ export const bookingRouter = router({
   }),
 
   getBarberBookings: barberProcedure.query(async ({ ctx }) => {
-    const startOfToday = new Date();
-    startOfToday.setUTCHours(0, 0, 0, 0);
-
     const { data: bookings, error } = await ctx.supabase
       .from('bookings')
       .select('*')
       .eq('barber_id', ctx.barber.id)
-      .in('status', ['pending', 'confirmed'])
       .order('created_at', { ascending: false });
     if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
 
-    const enriched = await enrichBookings(ctx.supabase, bookings ?? []);
-    return enriched.filter((booking) => booking.slot && new Date(booking.slot.start_time) >= startOfToday);
+    return enrichBookings(ctx.supabase, bookings ?? []);
   }),
 
   getById: protectedProcedure
@@ -179,5 +174,33 @@ export const bookingRouter = router({
       }
 
       return { status: 'cancelled' as const, refunded };
+    }),
+
+  markComplete: barberProcedure
+    .input(z.object({ bookingId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const { data: booking, error } = await ctx.supabase
+        .from('bookings')
+        .select('*')
+        .eq('id', input.bookingId)
+        .maybeSingle();
+      if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+      if (!booking) throw new TRPCError({ code: 'NOT_FOUND', message: 'Booking not found' });
+      if (booking.barber_id !== ctx.barber.id) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'You do not own this booking' });
+      }
+      if (booking.status !== 'confirmed') {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Only confirmed bookings can be marked complete' });
+      }
+
+      const { data: updated, error: updateError } = await ctx.supabase
+        .from('bookings')
+        .update({ status: 'completed' })
+        .eq('id', booking.id)
+        .select('*')
+        .single();
+      if (updateError) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: updateError.message });
+
+      return updated;
     }),
 });
