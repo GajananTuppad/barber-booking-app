@@ -6,4 +6,6 @@ export * from './lib/collections';
 export * from './lib/schedule';
 export * from './lib/edge-functions';
 export * from './lib/notifications';
+export * from './lib/push';
+export * from './schemas';
 export * from './trpc';

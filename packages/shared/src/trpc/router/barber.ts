@@ -1,7 +1,7 @@
 import { TRPCError } from '@trpc/server';
-import { z } from 'zod';
 import { groupBy, indexBy } from '../../lib/collections';
 import { haversineDistanceKm } from '../../lib/geo';
+import { barberIdInputSchema, barberSlotsInputSchema, nearbyBarbersInputSchema } from '../../schemas';
 import type { ReviewRow } from '../../types/database';
 import { publicProcedure, router } from '../trpc';
 
@@ -62,7 +62,7 @@ export const barberRouter = router({
   }),
 
   getById: publicProcedure
-    .input(z.object({ barberId: z.string().uuid() }))
+    .input(barberIdInputSchema)
     .query(async ({ ctx, input }) => {
       const { data: barber, error: barberError } = await ctx.supabase
         .from('barbers')
@@ -143,13 +143,7 @@ export const barberRouter = router({
     }),
 
   getNearby: publicProcedure
-    .input(
-      z.object({
-        lat: z.number().min(-90).max(90),
-        lng: z.number().min(-180).max(180),
-        radiusKm: z.number().positive().max(500).default(10),
-      }),
-    )
+    .input(nearbyBarbersInputSchema)
     .query(async ({ ctx, input }) => {
       const { data: salons, error: salonsError } = await ctx.supabase
         .from('salons')
@@ -208,12 +202,7 @@ export const barberRouter = router({
     }),
 
   getSlots: publicProcedure
-    .input(
-      z.object({
-        barberId: z.string().uuid(),
-        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected date in YYYY-MM-DD format'),
-      }),
-    )
+    .input(barberSlotsInputSchema)
     .query(async ({ ctx, input }) => {
       const dayStart = new Date(`${input.date}T00:00:00.000Z`);
       if (Number.isNaN(dayStart.getTime())) {

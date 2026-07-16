@@ -1,17 +1,11 @@
 import { TRPCError } from '@trpc/server';
-import { z } from 'zod';
 import { indexBy } from '../../lib/collections';
+import { barberIdInputSchema, createReviewInputSchema } from '../../schemas';
 import { protectedProcedure, publicProcedure, router } from '../trpc';
 
 export const reviewRouter = router({
   create: protectedProcedure
-    .input(
-      z.object({
-        bookingId: z.string().uuid(),
-        rating: z.number().int().min(1).max(5),
-        comment: z.string().max(2000).optional(),
-      }),
-    )
+    .input(createReviewInputSchema)
     .mutation(async ({ ctx, input }) => {
       const { data: booking, error: bookingError } = await ctx.supabase
         .from('bookings')
@@ -59,7 +53,7 @@ export const reviewRouter = router({
     }),
 
   getByBarber: publicProcedure
-    .input(z.object({ barberId: z.string().uuid() }))
+    .input(barberIdInputSchema)
     .query(async ({ ctx, input }) => {
       const { data: reviews, error } = await ctx.supabase
         .from('reviews')

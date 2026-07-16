@@ -1,6 +1,7 @@
 import { corsHeaders, errorResponse, jsonResponse } from '../_shared/cors.ts';
 import { createRazorpayOrder } from '../_shared/razorpay.ts';
-import { isSlotLocked, lockSlot } from '../_shared/redis.ts';
+import { isSlotLocked, lockSlot, unlockSlot } from '../_shared/redis.ts';
+import { checkRateLimit } from '../_shared/rate-limit.ts';
 import { createAdminClient, createUserClient, getBearerToken } from '../_shared/supabase-admin.ts';
 
 interface BookSlotRequest {
@@ -9,9 +10,15 @@ interface BookSlotRequest {
   customerId: string;
 }
 
+const SLOT_TAKEN_MESSAGE = 'Slot just taken — please pick another time.';
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
+
+  if (!(await checkRateLimit(req, 'book-slot', 20, 60))) {
+    return errorResponse('Too many requests — please slow down.', 429);
+  }
 
   let body: BookSlotRequest;
   try {
@@ -38,12 +45,11 @@ Deno.serve(async (req) => {
 
   const { data: slot, error: slotError } = await admin
     .from('slots')
-    .select('id, status, barber_id')
+    .select('id, barber_id')
     .eq('id', slotId)
     .maybeSingle();
   if (slotError) return errorResponse(slotError.message, 500);
   if (!slot) return errorResponse('Slot not found', 404);
-  if (slot.status !== 'available') return errorResponse('Slot is not available', 409);
 
   const { data: service, error: serviceError } = await admin
     .from('services')
@@ -56,16 +62,28 @@ Deno.serve(async (req) => {
     return errorResponse("Service does not belong to this slot's barber", 400);
   }
 
+  // Redis gives us a fast distributed lock across concurrent requests; the
+  // try_lock_slot RPC (a single atomic UPDATE...WHERE) is the DB-level
+  // source of truth in case two requests somehow both get past the Redis
+  // check (e.g. a Redis hiccup) — only one can ever flip 'available' to
+  // 'locked'.
   if (await isSlotLocked(slotId)) {
-    return errorResponse('Slot is currently locked by another customer', 409);
+    return errorResponse(SLOT_TAKEN_MESSAGE, 409);
   }
-  const locked = await lockSlot(slotId, customerId);
-  if (!locked) {
-    return errorResponse('Slot is currently locked by another customer', 409);
+  const redisLocked = await lockSlot(slotId, customerId);
+  if (!redisLocked) {
+    return errorResponse(SLOT_TAKEN_MESSAGE, 409);
   }
 
-  const { error: updateError } = await admin.from('slots').update({ status: 'locked' }).eq('id', slotId);
-  if (updateError) return errorResponse(updateError.message, 500);
+  const { data: dbLocked, error: rpcError } = await admin.rpc('try_lock_slot', { p_slot_id: slotId });
+  if (rpcError) {
+    await unlockSlot(slotId, customerId);
+    return errorResponse(rpcError.message, 500);
+  }
+  if (!dbLocked) {
+    await unlockSlot(slotId, customerId);
+    return errorResponse(SLOT_TAKEN_MESSAGE, 409);
+  }
 
   const amountPaise = Math.round(Number(service.price) * 100);
   try {
@@ -79,6 +97,7 @@ Deno.serve(async (req) => {
   } catch (err) {
     // The lock/DB state would otherwise strand this slot if payment setup failed.
     await admin.from('slots').update({ status: 'available' }).eq('id', slotId);
+    await unlockSlot(slotId, customerId);
     return errorResponse(err instanceof Error ? err.message : 'Failed to create payment order', 502);
   }
 });

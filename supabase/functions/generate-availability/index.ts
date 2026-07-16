@@ -1,4 +1,5 @@
 import { corsHeaders, errorResponse, jsonResponse } from '../_shared/cors.ts';
+import { checkRateLimit } from '../_shared/rate-limit.ts';
 import { generateSlotsFromSchedule, type WeeklyScheduleEntry } from '../_shared/schedule.ts';
 import { createAdminClient, createUserClient, getBearerToken } from '../_shared/supabase-admin.ts';
 
@@ -12,6 +13,10 @@ interface GenerateAvailabilityRequest {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
+
+  if (!(await checkRateLimit(req, 'generate-availability', 20, 60))) {
+    return errorResponse('Too many requests — please slow down.', 429);
+  }
 
   const accessToken = getBearerToken(req);
   if (!accessToken) return errorResponse('Missing Authorization bearer token', 401);

@@ -10,6 +10,7 @@
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "type-check": "turbo run type-check",
+    "test": "turbo run test",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\" --ignore-unknown",
     "format:check": "prettier --check \"**/*.{ts,tsx,md,json}\" --ignore-unknown"
   },
@@ -19,6 +20,6 @@
     "typescript": "^5.5.4"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["unrs-resolver"]
+    "onlyBuiltDependencies": ["unrs-resolver", "esbuild"]
   }
 }

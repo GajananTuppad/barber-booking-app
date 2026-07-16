@@ -1,5 +1,7 @@
 import { corsHeaders, errorResponse, jsonResponse } from '../_shared/cors.ts';
 import { sendBookingConfirmation } from '../_shared/notifications.ts';
+import { notifyUser } from '../_shared/notify.ts';
+import { checkRateLimit } from '../_shared/rate-limit.ts';
 import { verifyPaymentSignature } from '../_shared/razorpay.ts';
 import { unlockSlot } from '../_shared/redis.ts';
 import { createAdminClient } from '../_shared/supabase-admin.ts';
@@ -18,6 +20,10 @@ interface ConfirmBookingRequest {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
+
+  if (!(await checkRateLimit(req, 'confirm-booking', 20, 60))) {
+    return errorResponse('Too many requests — please slow down.', 429);
+  }
 
   let body: ConfirmBookingRequest;
   try {
@@ -116,6 +122,16 @@ Deno.serve(async (req) => {
       customerEmail: authUser.data.user?.email ?? null,
       customerPhone: customerProfile?.phone ?? null,
     });
+
+    if (barber) {
+      await notifyUser({
+        userId: barber.profile_id,
+        type: 'booking_confirmed',
+        title: 'New booking',
+        body: `New booking from ${customerProfile?.full_name ?? 'a customer'} for ${service?.name ?? 'a service'}`,
+        data: { bookingId: booking.id },
+      });
+    }
   } catch (err) {
     console.error('Failed to send booking confirmation notification', err);
   }

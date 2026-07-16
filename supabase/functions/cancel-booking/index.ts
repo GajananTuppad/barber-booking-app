@@ -1,5 +1,7 @@
 import { corsHeaders, errorResponse, jsonResponse } from '../_shared/cors.ts';
 import { sendCancellation } from '../_shared/notifications.ts';
+import { notifyUser } from '../_shared/notify.ts';
+import { checkRateLimit } from '../_shared/rate-limit.ts';
 import { createRefund } from '../_shared/razorpay.ts';
 import { createAdminClient, createUserClient, getBearerToken } from '../_shared/supabase-admin.ts';
 
@@ -12,6 +14,10 @@ interface CancelBookingRequest {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
+
+  if (!(await checkRateLimit(req, 'cancel-booking', 20, 60))) {
+    return errorResponse('Too many requests — please slow down.', 429);
+  }
 
   const accessToken = getBearerToken(req);
   if (!accessToken) return errorResponse('Missing Authorization bearer token', 401);
@@ -80,11 +86,13 @@ Deno.serve(async (req) => {
 
     let barberName = 'your barber';
     let salonName = 'the salon';
+    let barberProfile: { full_name: string | null; phone: string | null } | null = null;
     if (barber) {
-      const [{ data: barberProfile }, { data: salon }] = await Promise.all([
+      const [{ data: fetchedBarberProfile }, { data: salon }] = await Promise.all([
         admin.from('profiles').select('*').eq('id', barber.profile_id).maybeSingle(),
         admin.from('salons').select('*').eq('id', barber.salon_id).maybeSingle(),
       ]);
+      barberProfile = fetchedBarberProfile;
       barberName = barberProfile?.full_name ?? barberName;
       salonName = salon?.name ?? salonName;
     }
@@ -103,6 +111,41 @@ Deno.serve(async (req) => {
       },
       refunded,
     );
+
+    await notifyUser({
+      userId: booking.customer_id,
+      type: 'booking_cancelled',
+      title: 'Booking cancelled',
+      body: `Your ${service?.name ?? 'appointment'} on ${new Date(slot?.start_time ?? booking.created_at).toLocaleDateString()} was cancelled.`,
+      data: { bookingId: booking.id, refunded },
+    });
+
+    if (barber) {
+      const barberAuthUser = await admin.auth.admin.getUserById(barber.profile_id);
+
+      await sendCancellation(
+        {
+          bookingId: booking.id,
+          startTime: slot?.start_time ?? booking.created_at,
+          serviceName: service?.name ?? 'the appointment',
+          barberName,
+          salonName,
+          salonAddress: null,
+          customerName: barberProfile?.full_name ?? 'there',
+          customerEmail: barberAuthUser.data.user?.email ?? null,
+          customerPhone: barberProfile?.phone ?? null,
+        },
+        refunded,
+      );
+
+      await notifyUser({
+        userId: barber.profile_id,
+        type: 'booking_cancelled',
+        title: 'Booking cancelled',
+        body: `${customerProfile?.full_name ?? 'A customer'} cancelled their ${service?.name ?? 'appointment'}.`,
+        data: { bookingId: booking.id, refunded },
+      });
+    }
   } catch (err) {
     console.error('Failed to send cancellation notification', err);
   }

@@ -1,5 +1,6 @@
 import { jsonResponse } from '../_shared/cors.ts';
 import { sendBookingReminder } from '../_shared/notifications.ts';
+import { notifyUser } from '../_shared/notify.ts';
 import { createAdminClient } from '../_shared/supabase-admin.ts';
 
 const REMINDER_WINDOW_MS = 75 * 60 * 1000;
@@ -59,6 +60,29 @@ Deno.serve(async (_req) => {
         customerEmail: authUser.data.user?.email ?? null,
         customerPhone: customerProfile?.phone ?? null,
       });
+
+      const startTimeLabel = new Date(String(slot.start_time)).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      await notifyUser({
+        userId: booking.customer_id,
+        type: 'booking_reminder',
+        title: 'Upcoming appointment',
+        body: `${service?.name ?? 'Your appointment'} with ${barberName} is at ${startTimeLabel}.`,
+        data: { bookingId: booking.id },
+      });
+
+      if (barber) {
+        await notifyUser({
+          userId: barber.profile_id,
+          type: 'booking_reminder',
+          title: 'Upcoming appointment',
+          body: `${customerProfile?.full_name ?? 'A customer'} is booked for ${startTimeLabel}.`,
+          data: { bookingId: booking.id },
+        });
+      }
 
       await admin.from('bookings').update({ reminder_sent: true }).eq('id', booking.id);
       sent++;

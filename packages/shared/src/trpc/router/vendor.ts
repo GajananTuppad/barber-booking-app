@@ -1,27 +1,19 @@
 import { TRPCError } from '@trpc/server';
-import { z } from 'zod';
+import type { z } from 'zod';
 import { generateSlotsFromSchedule } from '../../lib/schedule';
+import {
+  createSlotsInputSchema,
+  earningsPeriodSchema,
+  getDailyEarningsInputSchema,
+  getEarningsInputSchema,
+  serviceIdInputSchema,
+  slotIdInputSchema,
+  updateProfileInputSchema,
+} from '../../schemas';
 import type { BarberUpdate, ServiceRow } from '../../types/database';
 import { barberProcedure, router } from '../trpc';
 
 const DAYS_AHEAD = 30;
-
-const serviceInputSchema = z.object({
-  id: z.string().uuid().optional(),
-  name: z.string().min(1),
-  description: z.string().max(2000).optional(),
-  durationMinutes: z.number().int().positive(),
-  price: z.number().nonnegative(),
-});
-
-const weeklyScheduleEntrySchema = z.object({
-  dayOfWeek: z.number().int().min(0).max(6),
-  startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Expected HH:mm'),
-  endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Expected HH:mm'),
-  intervalMinutes: z.number().int().positive().max(240),
-});
-
-const earningsPeriodSchema = z.enum(['today', 'week', 'month', 'all']);
 
 function periodStart(period: Exclude<z.infer<typeof earningsPeriodSchema>, 'all'>): Date {
   const now = new Date();
@@ -45,16 +37,7 @@ export const vendorRouter = router({
   }),
 
   updateProfile: barberProcedure
-    .input(
-      z.object({
-        bio: z.string().max(2000).optional(),
-        avatarUrl: z.string().url().optional(),
-        coverImageUrl: z.string().url().optional(),
-        experienceYears: z.number().int().min(0).max(80).optional(),
-        isAvailable: z.boolean().optional(),
-        services: z.array(serviceInputSchema).optional(),
-      }),
-    )
+    .input(updateProfileInputSchema)
     .mutation(async ({ ctx, input }) => {
       const barberUpdate: BarberUpdate = {};
       if (input.bio !== undefined) barberUpdate.bio = input.bio;
@@ -126,7 +109,7 @@ export const vendorRouter = router({
     }),
 
   createSlots: barberProcedure
-    .input(z.object({ schedule: z.array(weeklyScheduleEntrySchema).min(1) }))
+    .input(createSlotsInputSchema)
     .mutation(async ({ ctx, input }) => {
       const now = new Date();
       const generated = generateSlotsFromSchedule(input.schedule, now, DAYS_AHEAD);
@@ -162,7 +145,7 @@ export const vendorRouter = router({
     }),
 
   deleteSlot: barberProcedure
-    .input(z.object({ slotId: z.string().uuid() }))
+    .input(slotIdInputSchema)
     .mutation(async ({ ctx, input }) => {
       const { data: slot, error } = await ctx.supabase
         .from('slots')
@@ -191,7 +174,7 @@ export const vendorRouter = router({
     }),
 
   getEarnings: barberProcedure
-    .input(z.object({ period: earningsPeriodSchema }))
+    .input(getEarningsInputSchema)
     .query(async ({ ctx, input }) => {
       let query = ctx.supabase
         .from('bookings')
@@ -211,7 +194,7 @@ export const vendorRouter = router({
     }),
 
   getDailyEarnings: barberProcedure
-    .input(z.object({ days: z.number().int().positive().max(90).default(30) }))
+    .input(getDailyEarningsInputSchema)
     .query(async ({ ctx, input }) => {
       const since = new Date(Date.now() - input.days * 24 * 60 * 60 * 1000);
       const { data, error } = await ctx.supabase
@@ -236,7 +219,7 @@ export const vendorRouter = router({
     }),
 
   deleteService: barberProcedure
-    .input(z.object({ serviceId: z.string().uuid() }))
+    .input(serviceIdInputSchema)
     .mutation(async ({ ctx, input }) => {
       const { data: service, error } = await ctx.supabase
         .from('services')

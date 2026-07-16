@@ -12,6 +12,7 @@ export type ProfileRow = {
   avatar_url: string | null;
   role: UserRole;
   is_banned: boolean;
+  push_token: string | null;
   created_at: string;
 };
 export type ProfileInsert = Partial<Omit<ProfileRow, 'id'>> & Pick<ProfileRow, 'id'>;
@@ -120,6 +121,20 @@ export type PayoutRow = {
 export type PayoutInsert = Partial<Omit<PayoutRow, 'id' | 'created_at'>> &
   Pick<PayoutRow, 'barber_id' | 'period_start' | 'period_end' | 'gross_amount' | 'commission_amount' | 'net_amount'>;
 export type PayoutUpdate = Partial<PayoutRow>;
+
+export type NotificationRow = {
+  id: string;
+  user_id: string;
+  type: string;
+  title: string;
+  body: string;
+  data: Json | null;
+  read: boolean;
+  created_at: string;
+};
+export type NotificationInsert = Partial<Omit<NotificationRow, 'id' | 'created_at'>> &
+  Pick<NotificationRow, 'user_id' | 'type' | 'title' | 'body'>;
+export type NotificationUpdate = Partial<NotificationRow>;
 
 export interface Database {
   public: {
@@ -270,9 +285,28 @@ export interface Database {
           },
         ];
       };
+      notifications: {
+        Row: NotificationRow;
+        Insert: NotificationInsert;
+        Update: NotificationUpdate;
+        Relationships: [
+          {
+            foreignKeyName: 'notifications_user_id_fkey';
+            columns: ['user_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      try_lock_slot: {
+        Args: { p_slot_id: string };
+        Returns: boolean;
+      };
+    };
     Enums: {
       user_role: UserRole;
       slot_status: SlotStatus;
