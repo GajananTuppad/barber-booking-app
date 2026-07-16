@@ -33,11 +33,24 @@ function periodStart(period: Exclude<z.infer<typeof earningsPeriodSchema>, 'all'
 }
 
 export const vendorRouter = router({
+  getMyProfile: barberProcedure.query(async ({ ctx }) => {
+    const [{ data: services, error: servicesError }, { data: salon, error: salonError }] = await Promise.all([
+      ctx.supabase.from('services').select('*').eq('barber_id', ctx.barber.id).order('created_at', { ascending: true }),
+      ctx.supabase.from('salons').select('*').eq('id', ctx.barber.salon_id).maybeSingle(),
+    ]);
+    if (servicesError) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: servicesError.message });
+    if (salonError) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: salonError.message });
+
+    return { barber: ctx.barber, salon: salon ?? null, services: services ?? [] };
+  }),
+
   updateProfile: barberProcedure
     .input(
       z.object({
         bio: z.string().max(2000).optional(),
         avatarUrl: z.string().url().optional(),
+        coverImageUrl: z.string().url().optional(),
+        experienceYears: z.number().int().min(0).max(80).optional(),
         isAvailable: z.boolean().optional(),
         services: z.array(serviceInputSchema).optional(),
       }),
@@ -46,6 +59,8 @@ export const vendorRouter = router({
       const barberUpdate: BarberUpdate = {};
       if (input.bio !== undefined) barberUpdate.bio = input.bio;
       if (input.avatarUrl !== undefined) barberUpdate.avatar_url = input.avatarUrl;
+      if (input.coverImageUrl !== undefined) barberUpdate.cover_image_url = input.coverImageUrl;
+      if (input.experienceYears !== undefined) barberUpdate.experience_years = input.experienceYears;
       if (input.isAvailable !== undefined) barberUpdate.is_available = input.isAvailable;
 
       let barber = ctx.barber;
@@ -194,4 +209,59 @@ export const vendorRouter = router({
       const total = (data ?? []).reduce((sum, row) => sum + Number(row.total_amount), 0);
       return { period: input.period, bookingCount: data?.length ?? 0, total };
     }),
+
+  getDailyEarnings: barberProcedure
+    .input(z.object({ days: z.number().int().positive().max(90).default(30) }))
+    .query(async ({ ctx, input }) => {
+      const since = new Date(Date.now() - input.days * 24 * 60 * 60 * 1000);
+      const { data, error } = await ctx.supabase
+        .from('bookings')
+        .select('total_amount, created_at')
+        .eq('barber_id', ctx.barber.id)
+        .in('status', ['confirmed', 'completed'])
+        .gte('created_at', since.toISOString());
+      if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+
+      const totalsByDay = new Map<string, number>();
+      for (const row of data ?? []) {
+        const day = row.created_at.slice(0, 10);
+        totalsByDay.set(day, (totalsByDay.get(day) ?? 0) + Number(row.total_amount));
+      }
+
+      return Array.from({ length: input.days }, (_, i) => {
+        const date = new Date(since.getTime() + i * 24 * 60 * 60 * 1000);
+        const day = date.toISOString().slice(0, 10);
+        return { day, total: totalsByDay.get(day) ?? 0 };
+      });
+    }),
+
+  deleteService: barberProcedure
+    .input(z.object({ serviceId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const { data: service, error } = await ctx.supabase
+        .from('services')
+        .select('*')
+        .eq('id', input.serviceId)
+        .maybeSingle();
+      if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+      if (!service) throw new TRPCError({ code: 'NOT_FOUND', message: 'Service not found' });
+      if (service.barber_id !== ctx.barber.id) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'You do not own this service' });
+      }
+
+      const { error: deleteError } = await ctx.supabase.from('services').delete().eq('id', service.id);
+      if (deleteError) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: deleteError.message });
+
+      return { id: service.id };
+    }),
+
+  getPayouts: barberProcedure.query(async ({ ctx }) => {
+    const { data, error } = await ctx.supabase
+      .from('payouts')
+      .select('*')
+      .eq('barber_id', ctx.barber.id)
+      .order('period_start', { ascending: false });
+    if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+    return data ?? [];
+  }),
 });

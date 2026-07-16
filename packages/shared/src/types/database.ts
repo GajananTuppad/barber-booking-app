@@ -3,6 +3,7 @@ export type Json = string | number | boolean | null | { [key: string]: Json | un
 export type UserRole = 'customer' | 'barber' | 'admin';
 export type SlotStatus = 'available' | 'locked' | 'booked' | 'cancelled';
 export type BookingStatus = 'pending' | 'confirmed' | 'completed' | 'cancelled';
+export type PayoutStatus = 'pending' | 'paid';
 
 export type ProfileRow = {
   id: string;
@@ -10,6 +11,7 @@ export type ProfileRow = {
   phone: string | null;
   avatar_url: string | null;
   role: UserRole;
+  is_banned: boolean;
   created_at: string;
 };
 export type ProfileInsert = Partial<Omit<ProfileRow, 'id'>> & Pick<ProfileRow, 'id'>;
@@ -39,6 +41,7 @@ export type BarberRow = {
   bio: string | null;
   experience_years: number;
   avatar_url: string | null;
+  cover_image_url: string | null;
   is_available: boolean;
   created_at: string;
 };
@@ -101,6 +104,22 @@ export type ReviewRow = {
 export type ReviewInsert = Partial<Omit<ReviewRow, 'id' | 'created_at'>> &
   Pick<ReviewRow, 'booking_id' | 'customer_id' | 'barber_id' | 'rating'>;
 export type ReviewUpdate = Partial<ReviewRow>;
+
+export type PayoutRow = {
+  id: string;
+  barber_id: string;
+  period_start: string;
+  period_end: string;
+  gross_amount: number;
+  commission_amount: number;
+  net_amount: number;
+  status: PayoutStatus;
+  paid_at: string | null;
+  created_at: string;
+};
+export type PayoutInsert = Partial<Omit<PayoutRow, 'id' | 'created_at'>> &
+  Pick<PayoutRow, 'barber_id' | 'period_start' | 'period_end' | 'gross_amount' | 'commission_amount' | 'net_amount'>;
+export type PayoutUpdate = Partial<PayoutRow>;
 
 export interface Database {
   public: {
@@ -237,6 +256,20 @@ export interface Database {
           },
         ];
       };
+      payouts: {
+        Row: PayoutRow;
+        Insert: PayoutInsert;
+        Update: PayoutUpdate;
+        Relationships: [
+          {
+            foreignKeyName: 'payouts_barber_id_fkey';
+            columns: ['barber_id'];
+            isOneToOne: false;
+            referencedRelation: 'barbers';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
@@ -244,6 +277,7 @@ export interface Database {
       user_role: UserRole;
       slot_status: SlotStatus;
       booking_status: BookingStatus;
+      payout_status: PayoutStatus;
     };
     CompositeTypes: Record<string, never>;
   };
