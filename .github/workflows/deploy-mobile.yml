@@ -1,0 +1,39 @@
+name: Deploy Mobile
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/mobile/**'
+      - 'packages/shared/**'
+      - 'pnpm-lock.yaml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: EAS Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      # --no-wait kicks the build off on Expo's infra and returns immediately —
+      # native builds take 15-30+ min, far longer than CI should block on.
+      # Track progress at https://expo.dev, or drop --no-wait to make this job
+      # wait and fail on a build failure.
+      - name: Build on EAS
+        working-directory: apps/mobile
+        run: eas build --platform all --non-interactive --no-wait
