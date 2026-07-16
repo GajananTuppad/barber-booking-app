@@ -1,6 +1,7 @@
-import type { SlotRow } from '@barber/shared';
+import { FunctionsHttpError, type SlotRow } from '@barber/shared';
 import { addDays, format, isSameDay } from 'date-fns';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as LocalAuthentication from 'expo-local-authentication';
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import RazorpayCheckout from 'react-native-razorpay';
@@ -10,6 +11,8 @@ import { SlotButton, type SlotButtonStatus } from '../../../components/SlotButto
 import { supabase } from '../../../lib/supabase';
 import { trpc } from '../../../lib/trpc';
 import { useAuth } from '../../../providers/AuthProvider';
+
+const SLOT_TAKEN_STATUS = 409;
 
 const DAYS_AHEAD = 14;
 
@@ -74,15 +77,52 @@ export default function BookingFlowScreen() {
   const selectedSlot = slots.find((slot) => slot.id === selectedSlotId) ?? null;
   const canPay = Boolean(selectedSlot && selectedService && !paying && session);
 
+  async function releaseSlotSilently(slotId: string) {
+    try {
+      await supabase.functions.invoke('release-slot', { body: { slotId } });
+    } catch (releaseErr) {
+      console.error('Failed to release slot after a failed booking attempt', releaseErr);
+    }
+  }
+
   async function handlePay() {
     if (!selectedSlot || !selectedService || !barberId || !session) return;
 
     setPaying(true);
+    let slotLocked = false;
     try {
       const { data: bookData, error: bookError } = await supabase.functions.invoke<BookSlotResponse>('book-slot', {
         body: { slotId: selectedSlot.id, serviceId: selectedService.id, customerId: session.user.id },
       });
-      if (bookError || !bookData) throw new Error(bookError?.message ?? 'Could not lock this slot');
+      if (bookError || !bookData) {
+        if (bookError instanceof FunctionsHttpError && bookError.context.status === SLOT_TAKEN_STATUS) {
+          Alert.alert('Slot just taken', 'Someone else booked this slot. Pick another time to continue.', [
+            {
+              text: 'OK',
+              onPress: () => {
+                setSelectedSlotId(null);
+                slotsQuery.refetch();
+              },
+            },
+          ]);
+          return;
+        }
+        throw new Error(bookError?.message ?? 'Could not lock this slot');
+      }
+      slotLocked = true;
+
+      // Best-effort biometric confirmation before charging the card — skipped
+      // entirely on devices with no biometric hardware/enrollment so it never
+      // blocks a payment outright.
+      const hasBiometricHardware = await LocalAuthentication.hasHardwareAsync();
+      if (hasBiometricHardware && (await LocalAuthentication.isEnrolledAsync())) {
+        const biometricResult = await LocalAuthentication.authenticateAsync({
+          promptMessage: 'Confirm to proceed with payment',
+        });
+        if (!biometricResult.success) {
+          throw new Error('Biometric confirmation was cancelled');
+        }
+      }
 
       const paymentResult = await RazorpayCheckout.open({
         key: bookData.keyId,
@@ -117,8 +157,14 @@ export default function BookingFlowScreen() {
 
       router.replace(`/(customer)/bookings/${confirmData.bookingId}`);
     } catch (err) {
+      if (slotLocked) {
+        await releaseSlotSilently(selectedSlot.id);
+      }
       const message = err instanceof Error ? err.message : 'Payment was cancelled or failed';
-      Alert.alert('Booking failed', message);
+      Alert.alert('Booking failed', message, [
+        { text: 'Try again', onPress: () => handlePay() },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
     } finally {
       setPaying(false);
     }

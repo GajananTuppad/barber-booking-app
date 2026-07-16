@@ -1,4 +1,5 @@
 import '../global.css';
+import * as Notifications from 'expo-notifications';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
@@ -36,6 +37,22 @@ function NavigationGuard() {
       router.replace('/(customer)');
     }
   }, [session, profile, loading, segments, router]);
+
+  useEffect(() => {
+    // Tapping a push notification while the app is backgrounded/killed needs
+    // to land on the right screen for whichever role this device is signed
+    // in as — the (customer) and (barber) groups both have a bookings/[id]
+    // route at the same bare pathname, so the target must be role-qualified.
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      const bookingId = response.notification.request.content.data?.bookingId;
+      if (typeof bookingId !== 'string') return;
+
+      const bookingsRoot = profile?.role === 'barber' ? '/(barber)/bookings' : '/(customer)/bookings';
+      router.push(`${bookingsRoot}/${bookingId}`);
+    });
+
+    return () => subscription.remove();
+  }, [profile, router]);
 
   if (loading) {
     return (

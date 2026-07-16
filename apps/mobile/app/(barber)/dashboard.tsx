@@ -2,6 +2,7 @@ import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { BarberBookingCard } from '../../components/BarberBookingCard';
+import { NotificationBell } from '../../components/NotificationBell';
 import { trpc } from '../../lib/trpc';
 import { useAuth } from '../../providers/AuthProvider';
 
@@ -49,9 +50,12 @@ export default function BarberDashboardScreen() {
 
   return (
     <ScrollView className="flex-1 bg-bg" contentContainerClassName="px-4 pb-8 pt-16">
-      <Text className="mb-1 text-2xl font-bold text-white">
-        {greeting()}, {profile?.full_name?.split(' ')[0] ?? 'there'}
-      </Text>
+      <View className="mb-1 flex-row items-center justify-between">
+        <Text className="text-2xl font-bold text-white">
+          {greeting()}, {profile?.full_name?.split(' ')[0] ?? 'there'}
+        </Text>
+        <NotificationBell />
+      </View>
       <Text className="mb-6 text-muted">Here&apos;s what&apos;s happening today.</Text>
 
       <View className="mb-6 flex-row gap-3">

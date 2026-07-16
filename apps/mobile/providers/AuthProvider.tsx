@@ -1,6 +1,7 @@
 import type { Session } from '@supabase/supabase-js';
 import type { ProfileRow } from '@barber/shared';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { registerPushTokenForUser } from '../lib/push-notifications';
 import { supabase } from '../lib/supabase';
 
 interface AuthContextValue {
@@ -28,14 +29,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     supabase.auth.getSession().then(async ({ data }) => {
       if (!mounted) return;
       setSession(data.session);
-      if (data.session) await loadProfile(data.session.user.id);
+      if (data.session) {
+        await loadProfile(data.session.user.id);
+        void registerPushTokenForUser(data.session.user.id);
+      }
       if (mounted) setLoading(false);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange(async (event, nextSession) => {
       setSession(nextSession);
       if (nextSession) {
         await loadProfile(nextSession.user.id);
+        // Re-register on every SIGNED_IN (not just cold start) so a fresh
+        // Expo push token is captured after reinstalls or device changes.
+        if (event === 'SIGNED_IN') {
+          void registerPushTokenForUser(nextSession.user.id);
+        }
       } else {
         setProfile(null);
       }

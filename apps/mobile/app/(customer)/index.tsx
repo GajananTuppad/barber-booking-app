@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { BarberCard } from '../../components/BarberCard';
+import { NotificationBell } from '../../components/NotificationBell';
 import { colors } from '../../constants/theme';
 import { useUserLocation } from '../../hooks/useUserLocation';
 import { trpc } from '../../lib/trpc';
@@ -63,7 +64,10 @@ export default function HomeScreen() {
       contentContainerClassName="px-4 pb-8 pt-16"
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.gold} />}
     >
-      <Text className="mb-4 text-2xl font-bold text-white">Find your barber</Text>
+      <View className="mb-4 flex-row items-center justify-between">
+        <Text className="text-2xl font-bold text-white">Find your barber</Text>
+        <NotificationBell />
+      </View>
 
       <TextInput
         placeholder="Search by name or service"

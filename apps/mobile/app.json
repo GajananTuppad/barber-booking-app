@@ -7,15 +7,34 @@
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": false,
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0A0A0A"
+    },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.barberbooking.mobile",
+      "bundleIdentifier": "com.barberbooking.app",
+      "icon": "./assets/icon.png",
       "config": {
         "googleMapsApiKey": "$GOOGLE_MAPS_IOS_API_KEY"
+      },
+      "privacyManifests": {
+        "NSPrivacyAccessedAPITypes": [
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
+            "NSPrivacyAccessedAPITypeReasons": ["CA92.1"]
+          }
+        ]
       }
     },
     "android": {
-      "package": "com.barberbooking.mobile",
+      "package": "com.barberbooking.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0A0A0A"
+      },
       "config": {
         "googleMaps": {
           "apiKey": "$GOOGLE_MAPS_ANDROID_API_KEY"
@@ -39,7 +58,25 @@
         {
           "locationWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location to find barbers near you."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#C9A84C"
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow $(PRODUCT_NAME) to use Face ID to confirm payments."
+        }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "$EAS_PROJECT_ID"
+      }
+    }
   }
 }
