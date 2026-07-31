@@ -1,21 +1,9 @@
 const { getDefaultConfig } = require('expo/metro-config');
 const { withNativeWind } = require('nativewind/metro');
-const path = require('path');
 
-const projectRoot = __dirname;
-const workspaceRoot = path.resolve(projectRoot, '../..');
-
-const config = getDefaultConfig(projectRoot);
-
-// Watch all workspace packages so Metro picks up changes in @barber/shared.
-config.watchFolders = [workspaceRoot];
-
-// Resolve node_modules from both the app and the workspace root (pnpm hoists
-// shared deps to the root).
-config.resolver.nodeModulesPaths = [
-  path.resolve(projectRoot, 'node_modules'),
-  path.resolve(workspaceRoot, 'node_modules'),
-];
-config.resolver.disableHierarchicalLookup = true;
+// SDK 54's default Metro config auto-detects the pnpm workspace (via
+// pnpm-workspace.yaml) and sets watchFolders/nodeModulesPaths/hierarchical
+// lookup correctly on its own — no manual monorepo overrides needed anymore.
+const config = getDefaultConfig(__dirname);
 
 module.exports = withNativeWind(config, { input: './global.css' });

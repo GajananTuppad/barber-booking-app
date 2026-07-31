@@ -9,6 +9,10 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
+    // Newer expo-notifications versions split the old shouldShowAlert into
+    // these two — banner (heads-up) and list (notification center) display.
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 });
 
