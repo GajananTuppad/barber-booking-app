@@ -142,7 +142,7 @@ export const bookingRouter = router({
 
       const { error: bookingUpdateError } = await ctx.supabase
         .from('bookings')
-        .update({ status: 'cancelled' })
+        .update({ status: 'cancelled', reminder_sent: false })
         .eq('id', booking.id);
       if (bookingUpdateError) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: bookingUpdateError.message });
@@ -181,7 +181,7 @@ export const bookingRouter = router({
     .mutation(async ({ ctx, input }) => {
       const { data: booking, error } = await ctx.supabase
         .from('bookings')
-        .select('*')
+        .select('*, slot:slots(*)')
         .eq('id', input.bookingId)
         .maybeSingle();
       if (error) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
@@ -191,6 +191,9 @@ export const bookingRouter = router({
       }
       if (booking.status !== 'confirmed') {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Only confirmed bookings can be marked complete' });
+      }
+      if (booking.slot && new Date(booking.slot.start_time) > new Date()) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot complete a booking before the slot time' });
       }
 
       const { data: updated, error: updateError } = await ctx.supabase

@@ -17,6 +17,9 @@ export default function LoginPage() {
     if (params.get('error') === 'not_admin') {
       setError('That account does not have admin access.');
     }
+    if (params.get('error') === 'banned') {
+      setError('This account has been suspended. Contact support for assistance.');
+    }
   }, []);
 
   async function handleSubmit(e: FormEvent) {
@@ -25,12 +28,46 @@ export default function LoginPage() {
     setLoading(true);
     const supabase = createSupabaseBrowserClient();
     const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-    setLoading(false);
     if (signInError) {
+      setLoading(false);
       setError(signInError.message);
       return;
     }
-    router.push('/');
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setLoading(false);
+      setError('Sign-in succeeded, but the session could not be loaded. Please try again.');
+      return;
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('role, is_banned')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    setLoading(false);
+    if (profileError) {
+      setError(profileError.message);
+      return;
+    }
+    if (!profile) {
+      setError('Your account has no profile yet. Ask an administrator to set up access.');
+      return;
+    }
+    if (profile.is_banned) {
+      setError('This account has been suspended. Contact support for assistance.');
+      return;
+    }
+    if (profile.role !== 'admin') {
+      setError('That account does not have admin access.');
+      return;
+    }
+
+    router.replace('/overview');
     router.refresh();
   }
 

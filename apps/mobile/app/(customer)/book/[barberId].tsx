@@ -13,6 +13,8 @@ import { trpc } from '../../../lib/trpc';
 import { useAuth } from '../../../providers/AuthProvider';
 
 const SLOT_TAKEN_STATUS = 409;
+const SLOT_NOT_LOCKED_STATUS = 409; // shared code, differentiated by message
+const SLOT_NOT_LOCKED_MESSAGE = 'not in a confirmable state';
 
 const DAYS_AHEAD = 14;
 
@@ -63,7 +65,19 @@ export default function BookingFlowScreen() {
         { event: 'UPDATE', schema: 'public', table: 'slots', filter: `barber_id=eq.${barberId}` },
         (payload) => {
           const updated = payload.new as SlotRow;
-          setSlots((prev) => prev.map((slot) => (slot.id === updated.id ? updated : slot)));
+          setSlots((prev) => {
+            // Update existing slot or add newly-booked/locked slot if not present
+            const existing = prev.find((slot) => slot.id === updated.id);
+            if (existing) {
+              return prev.map((slot) => (slot.id === updated.id ? updated : slot));
+            }
+            // New slot appeared (e.g. was just locked by another user) — add it so
+            // it shows as unavailable instead of disappearing from the list
+            if (updated.status !== 'available') {
+              return [...prev, updated];
+            }
+            return prev;
+          });
         },
       )
       .subscribe();
@@ -153,7 +167,21 @@ export default function BookingFlowScreen() {
           },
         },
       );
-      if (confirmError || !confirmData) throw new Error(confirmError?.message ?? 'Could not confirm the booking');
+      if (confirmError || !confirmData) {
+        // Distinguish slot-lock expiry from other errors
+        if (confirmError instanceof FunctionsHttpError) {
+          const status = confirmError.context.status;
+          const message = confirmError.context.body?.message ?? '';
+          if (status === SLOT_NOT_LOCKED_STATUS && message.includes(SLOT_NOT_LOCKED_MESSAGE)) {
+            Alert.alert('Payment window expired', 'Your slot lock expired. Please try again.', [
+              { text: 'Try again', onPress: () => handlePay() },
+              { text: 'Cancel', style: 'cancel' },
+            ]);
+            return;
+          }
+        }
+        throw new Error(confirmError?.message ?? 'Could not confirm the booking');
+      }
 
       router.replace(`/(customer)/bookings/${confirmData.bookingId}`);
     } catch (err) {

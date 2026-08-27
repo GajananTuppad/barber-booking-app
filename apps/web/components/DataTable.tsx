@@ -13,7 +13,7 @@ export interface DataTableColumn<T> {
 interface DataTableProps<T> {
   columns: DataTableColumn<T>[];
   rows: T[];
-  rowKey: (row: T) => string;
+  rowKey: keyof T;
   searchPlaceholder?: string;
   searchValue?: (row: T) => string;
   emptyMessage?: string;
@@ -98,7 +98,7 @@ export function DataTable<T>({
               </tr>
             ) : (
               sorted.map((row) => (
-                <tr key={rowKey(row)} className="border-t border-border">
+                <tr key={String(row[rowKey])} className="border-t border-border">
                   {columns.map((column) => (
                     <td key={column.key} className={`px-4 py-3 text-white ${column.className ?? ''}`}>
                       {column.render ? column.render(row) : String((row as Record<string, unknown>)[column.key] ?? '')}

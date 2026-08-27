@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { DataTable } from '../../../../components/DataTable';
+import { BookingsDataTable } from '../../../../components/BookingsDataTable';
 import { StatusBadge } from '../../../../components/StatusBadge';
 import { getBarberDetail } from '../../../../lib/admin-data';
 
@@ -69,18 +69,9 @@ export default async function BarberDetailPage({ params }: { params: { id: strin
       </div>
 
       <h2 className="mb-3 text-lg font-semibold text-white">Booking History</h2>
-      <DataTable
+      <BookingsDataTable
         rows={bookings}
-        rowKey={(r) => r.id}
         searchPlaceholder="Filter by customer, service or status…"
-        searchValue={(r) => `${r.customerName} ${r.serviceName} ${r.status}`}
-        columns={[
-          { key: 'customerName', header: 'Customer' },
-          { key: 'serviceName', header: 'Service' },
-          { key: 'total_amount', header: 'Amount', render: (r) => `₹${r.total_amount}` },
-          { key: 'status', header: 'Status', render: (r) => <StatusBadge status={r.status} /> },
-          { key: 'created_at', header: 'Date', render: (r) => new Date(r.created_at).toLocaleDateString() },
-        ]}
         emptyMessage="No bookings yet."
       />
     </div>

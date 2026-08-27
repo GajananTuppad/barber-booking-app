@@ -1,15 +1,7 @@
 import '../globals.css';
-import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { createSupabaseServerClient } from '../../lib/supabase-server';
-
-const NAV_ITEMS = [
-  { href: '/', label: 'Overview' },
-  { href: '/salons', label: 'Salons' },
-  { href: '/barbers', label: 'Barbers' },
-  { href: '/users', label: 'Users' },
-  { href: '/payouts', label: 'Payouts' },
-];
+import { AdminSidebar } from '../../components/AdminSidebar';
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   const supabase = createSupabaseServerClient();
@@ -17,24 +9,13 @@ export default async function AdminLayout({ children }: { children: ReactNode })
     data: { user },
   } = await supabase.auth.getUser();
 
-  const profile = user ? (await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()).data : null;
+  const { data: profile } = user
+    ? await supabase.from('profiles').select('full_name').eq('id', user.id).maybeSingle()
+    : { data: null };
 
   return (
     <div className="flex min-h-screen bg-bg">
-      <aside className="w-56 shrink-0 border-r border-border bg-card px-4 py-6">
-        <div className="mb-8 text-lg font-bold text-gold">Shravkash Admin</div>
-        <nav className="flex flex-col gap-1">
-          {NAV_ITEMS.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="rounded-card px-3 py-2 text-sm text-muted hover:bg-input hover:text-white"
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
-      </aside>
+      <AdminSidebar profileName={profile?.full_name ?? undefined} />
 
       <div className="flex-1">
         <header className="flex items-center justify-between border-b border-border px-6 py-4">

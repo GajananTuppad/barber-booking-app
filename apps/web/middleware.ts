@@ -37,11 +37,24 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle();
-  const isAdmin = profile?.role === 'admin';
+  const { data: profile } = await supabase.from('profiles').select('role, is_banned').eq('id', user.id).maybeSingle();
+
+  if (!profile) {
+    if (isLoginPage) return response;
+    return NextResponse.redirect(new URL('/login', request.url));
+  }
+
+  if (profile.is_banned) {
+    if (isLoginPage && request.nextUrl.searchParams.get('error') === 'banned') return response;
+    const bannedUrl = new URL('/login', request.url);
+    bannedUrl.searchParams.set('error', 'banned');
+    return NextResponse.redirect(bannedUrl);
+  }
+
+  const isAdmin = profile.role === 'admin';
 
   if (isLoginPage) {
-    return isAdmin ? NextResponse.redirect(new URL('/', request.url)) : response;
+    return isAdmin ? NextResponse.redirect(new URL('/overview', request.url)) : response;
   }
 
   if (!isAdmin) {

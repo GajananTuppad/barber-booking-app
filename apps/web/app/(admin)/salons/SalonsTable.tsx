@@ -69,7 +69,7 @@ export function SalonsTable({ salons }: { salons: SalonRow[] }) {
     <>
       <DataTable
         rows={salons}
-        rowKey={(r) => r.id}
+        rowKey="id"
         columns={columns}
         searchPlaceholder="Search by name or city…"
         searchValue={(r) => `${r.name} ${r.city ?? ''}`}

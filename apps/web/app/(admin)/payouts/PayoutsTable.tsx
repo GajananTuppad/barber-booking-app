@@ -81,7 +81,7 @@ export function PayoutsTable({ payouts }: { payouts: PayoutRowData[] }) {
 
       <DataTable
         rows={payouts}
-        rowKey={(r) => r.id}
+        rowKey="id"
         columns={columns}
         searchPlaceholder="Search by barber…"
         searchValue={(r) => r.barberName}

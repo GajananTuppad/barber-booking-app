@@ -83,7 +83,7 @@ export function UsersTable({ users }: { users: UserRowData[] }) {
     <>
       <DataTable
         rows={users}
-        rowKey={(r) => r.id}
+        rowKey="id"
         columns={columns}
         searchPlaceholder="Search by name, email or phone…"
         searchValue={(r) => `${r.full_name ?? ''} ${r.email ?? ''} ${r.phone ?? ''}`}
@@ -104,8 +104,8 @@ export function UsersTable({ users }: { users: UserRowData[] }) {
         title={banTarget?.nextBanned ? `Ban ${banTarget.name}?` : `Unban ${banTarget?.name}?`}
         description={
           banTarget?.nextBanned
-            ? 'This flags the account as banned. It does not yet block sign-in.'
-            : 'This removes the ban flag from the account.'
+            ? 'This will suspend the account. The user will be blocked on their next sign-in.'
+            : 'This will restore access to the account.'
         }
         destructive={banTarget?.nextBanned}
         loading={pending}

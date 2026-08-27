@@ -102,7 +102,7 @@ export function BarbersTable({ barbers }: { barbers: BarberRowData[] }) {
     <>
       <DataTable
         rows={barbers}
-        rowKey={(r) => r.id}
+        rowKey="id"
         columns={columns}
         searchPlaceholder="Search by barber or salon…"
         searchValue={(r) => `${r.profile?.full_name ?? ''} ${r.salon?.name ?? ''}`}

@@ -62,6 +62,17 @@ Deno.serve(async (req) => {
 
   const admin = createAdminClient();
 
+  // Idempotency: if this exact payment was already processed, return the existing booking.
+  // This protects against duplicate calls (e.g. retried confirm-booking).
+  const { data: existingBooking } = await admin
+    .from('bookings')
+    .select('id')
+    .eq('payment_id', razorpayPaymentId)
+    .maybeSingle();
+  if (existingBooking) {
+    return jsonResponse({ bookingId: existingBooking.id, status: 'confirmed' });
+  }
+
   const { data: slot, error: slotError } = await admin.from('slots').select('*').eq('id', slotId).maybeSingle();
   if (slotError) return errorResponse(slotError.message, 500);
   if (!slot) return errorResponse('Slot not found', 404);
@@ -80,6 +91,7 @@ Deno.serve(async (req) => {
       payment_id: razorpayPaymentId,
       payment_status: 'paid',
       total_amount: amount,
+      reminder_sent: false,
     })
     .select('*')
     .single();

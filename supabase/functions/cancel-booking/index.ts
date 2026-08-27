@@ -51,7 +51,10 @@ Deno.serve(async (req) => {
   }
 
   if (booking.status !== 'cancelled') {
-    const { error: updateError } = await admin.from('bookings').update({ status: 'cancelled' }).eq('id', booking.id);
+    const { error: updateError } = await admin
+      .from('bookings')
+      .update({ status: 'cancelled', reminder_sent: false })
+      .eq('id', booking.id);
     if (updateError) return errorResponse(updateError.message, 500);
 
     const { error: slotUpdateError } = await admin

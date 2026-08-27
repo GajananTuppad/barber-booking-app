@@ -8,11 +8,25 @@ export const router = t.router;
 export const middleware = t.middleware;
 export const publicProcedure = t.procedure;
 
-/** Requires a signed-in user. Narrows `ctx.userId` to `string`. */
-const isAuthed = middleware(({ ctx, next }) => {
+/** Requires a signed-in user and checks they're not banned. Narrows `ctx.userId` to `string`. */
+const isAuthed = middleware(async ({ ctx, next }) => {
   if (!ctx.userId) {
     throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Sign in required' });
   }
+
+  const { data: profile, error } = await ctx.supabase
+    .from('profiles')
+    .select('is_banned')
+    .eq('id', ctx.userId)
+    .maybeSingle();
+
+  if (error) {
+    throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+  }
+  if (profile?.is_banned) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Account is banned' });
+  }
+
   return next({ ctx: { ...ctx, userId: ctx.userId } });
 });
 
