@@ -40,6 +40,13 @@ export default function BookingFlowScreen() {
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
   const [paying, setPaying] = useState(false);
+  const [lockedSlotId, setLockedSlotId] = useState<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (lockedSlotId) releaseSlotSilently(lockedSlotId);
+    };
+  }, [lockedSlotId]);
 
   const dateKey = format(selectedDate ?? new Date(), 'yyyy-MM-dd');
 
@@ -53,6 +60,7 @@ export default function BookingFlowScreen() {
   useEffect(() => {
     setSlots(slotsQuery.data ?? []);
     setSelectedSlotId(null);
+    setSelectedServiceId(null);
   }, [slotsQuery.data]);
 
   useEffect(() => {
@@ -103,7 +111,6 @@ export default function BookingFlowScreen() {
     if (!selectedSlot || !selectedService || !barberId || !session) return;
 
     setPaying(true);
-    let slotLocked = false;
     try {
       const { data: bookData, error: bookError } = await supabase.functions.invoke<BookSlotResponse>('book-slot', {
         body: { slotId: selectedSlot.id, serviceId: selectedService.id, customerId: session.user.id },
@@ -123,7 +130,7 @@ export default function BookingFlowScreen() {
         }
         throw new Error(bookError?.message ?? 'Could not lock this slot');
       }
-      slotLocked = true;
+      setLockedSlotId(selectedSlot.id);
 
       // Best-effort biometric confirmation before charging the card — skipped
       // entirely on devices with no biometric hardware/enrollment so it never
@@ -185,9 +192,6 @@ export default function BookingFlowScreen() {
 
       router.replace(`/(customer)/bookings/${confirmData.bookingId}`);
     } catch (err) {
-      if (slotLocked) {
-        await releaseSlotSilently(selectedSlot.id);
-      }
       const message = err instanceof Error ? err.message : 'Payment was cancelled or failed';
       Alert.alert('Booking failed', message, [
         { text: 'Try again', onPress: () => handlePay() },

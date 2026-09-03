@@ -72,11 +72,6 @@
           "faceIDPermission": "Allow $(PRODUCT_NAME) to use Face ID to confirm payments."
         }
       ]
-    ],
-    "extra": {
-      "eas": {
-        "projectId": "$EAS_PROJECT_ID"
-      }
-    }
+    ]
   }
 }

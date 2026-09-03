@@ -18,7 +18,7 @@ export default function BarberBookingsScreen() {
   useFocusEffect(
     useCallback(() => {
       markSeen();
-    }, [markSeen]),
+    }, [markSeen, router]),
   );
 
   const grouped = useMemo(() => {
